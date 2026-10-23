@@ -144,11 +144,13 @@ namespace Game.App
         internal void DamagePop(Vector3 point, float value, bool crit) => Context.View.Damage(point, value, crit, Context.Camera);
 
         // 새 처치와 저장된 사망 복원이 함께 쓴다. 시체 전리품 지점은 시체와 유실물 생성 객체가 빌린다.
-        internal void RestoreCorpse(OriginalEnemyController enemy, int[] loot, Vector3 position) => _bodies.SpawnCorpse(enemy, loot, position);
+        // counts는 적이 준비 때 정한 loot 칸별 수량이다.
+        internal void RestoreCorpse(OriginalEnemyController enemy, int[] loot, int[] counts, Vector3 position) =>
+            _bodies.SpawnCorpse(enemy, loot, counts, position);
 
         // 처치 수와 경험치를 사건과 한 명령으로 확정하려고 피해 출처만 받는다. 원작처럼 플레이어가 죽인 적만 프리셋 경험치와 처치 수를 받는다.
         // weaponItemId와 crit은 처치 과제 거르기에만 쓴다.
-        internal void Died(OriginalEnemyController enemy, int[] loot, bool fromPlayer, int weaponItemId, bool crit)
+        internal void Died(OriginalEnemyController enemy, int[] loot, int[] counts, bool fromPlayer, int weaponItemId, bool crit)
         {
             // 다시 불러온 월드에서도 전리품이 사망 위치에 남도록 처치 키에 좌표를 함께 기록한다.
             Vector3 position = enemy.transform.position;
@@ -160,7 +162,7 @@ namespace Game.App
             Context.Audio.PlayOneShot(_enemyDeathSound, position);
             // 사망 입자는 처치 확정과 같은 프레임에 시작한다.
             _combat.DeathEffect(position + Vector3.up * _deathEffectHeight);
-            RestoreCorpse(enemy, loot, position);
+            RestoreCorpse(enemy, loot, counts, position);
             NotifyQuestKill(enemy, fromPlayer, weaponItemId, crit);
         }
 

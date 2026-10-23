@@ -492,11 +492,12 @@ namespace Game.App
 
         // 원작 ItemAssetsCollection.Search다. 태그 하나와 품질 하나로 찾고, 없으면 원작처럼 품질을 하나씩 낮춰 0까지 다시 찾는다.
         // 원작과 달리 외형 프리팹이 없는 총은 뺀다. 들면 총구가 없어 쏠 수 없기 때문이다. 같은 조건은 처음 찾은 결과를 다시 쓴다.
-        internal IReadOnlyList<int> Search(string requireTag, HashSet<string> excludeTags, int quality)
+        // caliber는 원작 ItemFilter.caliber다. 적 총알(CharacterRandomPreset.AddBullet)만 주무기 구경을 넘기고, 비면 구경을 보지 않는다.
+        internal IReadOnlyList<int> Search(string requireTag, HashSet<string> excludeTags, int quality, string caliber = "")
         {
             var excluded = new List<string>(excludeTags);
             excluded.Sort(StringComparer.Ordinal);
-            string key = requireTag + "|" + quality + "|" + string.Join(",", excluded);
+            string key = requireTag + "|" + quality + "|" + caliber + "|" + string.Join(",", excluded);
             _searches ??= new Dictionary<string, int[]>(StringComparer.Ordinal);
             if (_searches.TryGetValue(key, out int[] cached)) return cached;
             int[] found = Array.Empty<int>();
@@ -504,16 +505,17 @@ namespace Game.App
             {
                 var ids = new List<int>();
                 foreach (OriginalItemDefinition item in _items)
-                    if (IsSearchCandidate(item, current, requireTag, excludeTags)) ids.Add(item.Id);
+                    if (IsSearchCandidate(item, current, requireTag, excludeTags, caliber)) ids.Add(item.Id);
                 found = ids.ToArray();
             }
             _searches.Add(key, found);
             return found;
         }
 
-        // 그 품질에서 태그 조건에 맞고, 들 수 없는 외형 없는 총이 아닌 아이템이 무작위 상자 후보다.
-        static bool IsSearchCandidate(OriginalItemDefinition item, int quality, string requireTag, HashSet<string> excludeTags) =>
-            item.Quality == quality && item.Matches(requireTag, excludeTags) && !(item.IsGun && item.Visual == null);
+        // 그 품질에서 태그와 구경 조건에 맞고, 들 수 없는 외형 없는 총이 아닌 아이템이 무작위 상자 후보다.
+        static bool IsSearchCandidate(OriginalItemDefinition item, int quality, string requireTag, HashSet<string> excludeTags, string caliber) =>
+            item.Quality == quality && (caliber.Length == 0 || item.Caliber == caliber) && item.Matches(requireTag, excludeTags)
+            && !(item.IsGun && item.Visual == null);
         // Search 결과 캐시다. 카탈로그는 실행 중 바뀌지 않으므로 앱 수명 동안 두고, Editor에서 정의가 바뀌면 OnValidate가 비운다.
         Dictionary<string, int[]>? _searches;
 

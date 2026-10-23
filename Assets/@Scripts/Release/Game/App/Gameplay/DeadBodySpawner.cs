@@ -86,29 +86,36 @@ namespace Game.App
 
         // 새 처치와 저장된 사망 복원이 함께 쓴다. 사망 위치에 원작 lootBoxPrefab 규칙으로 원본 시체 지점을 빌려 전리품 지점으로 구성한다.
         // 시체는 씬이 끝날 때까지 World가 소유하고, 저작 지점 목록에는 넣지 않는다.
-        internal void SpawnCorpse(OriginalEnemyController enemy, int[] loot, Vector3 position)
+        internal void SpawnCorpse(OriginalEnemyController enemy, int[] loot, int[] counts, Vector3 position)
         {
-            // 전리품 수량은 정의의 기본 수량이다. 정의가 없는 항목은 그릴 수도 주울 수도 없어 뺀다.
-            // 같은 카탈로그면 새 처치와 저장 복원이 같은 칸 순서를 만든다.
-            int[] lootTypes = new int[loot.Length], lootCounts = new int[loot.Length];
-            int kept = 0;
-            foreach (int type in loot)
-            {
-                if (!_world.Catalog.TryGet(type, out OriginalItemDefinition? definition)) continue;
-                lootTypes[kept] = type;
-                lootCounts[kept] = definition!.DefaultCount;
-                kept++;
-            }
-            if (kept < loot.Length)
-            {
-                Array.Resize(ref lootTypes, kept);
-                Array.Resize(ref lootCounts, kept);
-            }
+            CorpseContents(_world.Catalog, loot, counts, out int[] lootTypes, out int[] lootCounts);
             // 시체 루팅 원본 ID는 CampaignEventLog 규약으로 만들고, 상자 영역은 RuntimePointSpawner가 템플릿에서 찾은 Interactable Trigger다.
             // GameplayDataSettings의 시체 규칙 연결은 앱 시작 검증이 확인했고, 대여 실패는 World가 기록하므로 반환값을 쓰지 않는다.
             Spawn<InteractableLootbox>(GameplayDataSettings.Prefabs.LootBoxPrefab!, "Loot_" + enemy.SourceId, position,
                 (point, area) => point.Configure(CampaignEventLog.CorpseSource(enemy.SourceId), area, "gameplay.loot", Vector3.zero, 0f,
                     lootTypes, lootCounts, false));
+        }
+
+        // 시체 상자의 칸이다. 수량은 적이 준비 때 정한 칸별 수량이고, 원작 AddBullet의 총알만 배율이 붙고 나머지는 기본 수량이다.
+        // 정의가 없는 항목은 그릴 수도 주울 수도 없어 뺀다. 원작 InteractableLootbox.CreateFromItem처럼 DestroyOnLootBox 아이템
+        // (늑대, 거미, 폭풍 생물, 버섯의 적 전용 무기와 적 전용 총알)도 넣지 않는다. 같은 카탈로그와 시드면 새 처치와 저장 복원이 같은 칸 순서를 만든다.
+        internal static void CorpseContents(OriginalGameplayCatalog catalog, int[] loot, int[] counts, out int[] types, out int[] kept)
+        {
+            types = new int[loot.Length];
+            kept = new int[loot.Length];
+            int length = 0;
+            for (int index = 0; index < loot.Length; index++)
+            {
+                if (!catalog.TryGet(loot[index], out OriginalItemDefinition? definition) || definition!.HasTag("DestroyOnLootBox")) continue;
+                types[length] = loot[index];
+                kept[length] = counts[index];
+                length++;
+            }
+            if (length < loot.Length)
+            {
+                Array.Resize(ref types, length);
+                Array.Resize(ref kept, length);
+            }
         }
 
         // 레벨 정리가 부른다. 빌린 대상은 바로 뒤 SceneContext의 World 해제가 반환하거나 파괴하므로 목록과 표시 기록만 비운다.

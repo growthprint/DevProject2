@@ -28,6 +28,15 @@ namespace Game.App
         [SerializeField] float _forgetTime;
         [SerializeField] int _weaponType;
         [SerializeField] int[] _loot = Array.Empty<int>();
+        // 원작 CharacterRandomPreset.AddBullet의 bulletQualityDistribution(품질과 가중치), bulletFilter.requireTags, bulletExclusiveTags,
+        // bulletCountRange다. 제작 도구가 프리셋 값으로 채운다. 분포가 비면 원작처럼 찾을 총알이 없어 넣지 않는다.
+        [SerializeField] int[] _bulletQualities = Array.Empty<int>();
+        [SerializeField] float[] _bulletQualityWeights = Array.Empty<float>();
+        [SerializeField] string _bulletRequireTag = "";
+        [SerializeField] string[] _bulletExcludeTags = Array.Empty<string>();
+        [SerializeField] Vector2 _bulletCountRange = Vector2.one;
+        // Prepare가 정한 시체 전리품의 칸별 수량이다. _loot와 같은 순서이고, 총알만 기본 수량에 원작 bulletCountRange 배율을 곱한다.
+        int[] _lootCounts = Array.Empty<int>();
         [SerializeField] Animator _animator = null!;
         [SerializeField] NavMeshAgent _agent = null!;
         [SerializeField] Collider _hitCollider = null!;
@@ -240,12 +249,14 @@ namespace Game.App
             _restRange = _shootSpaceRange * (difficulty?.EnemyAttackTimeSpaceFactor ?? 1f);
             // 원작 CharacterRandomPreset처럼 총기 전투 이동의 추적 확률은 개체마다 min~max에서 한 번 뽑는다.
             _traceChance = RandomRange(_traceTargetChance);
+            // 시체가 주무기 총알을 갖도록 원작 생성 끝의 AddBullet을 여기서 한다. 저장 복원도 같은 시드로 같은 칸을 만든다.
+            AddBullet(catalog);
             _home = transform.position; _started = Time.time;
             _navFilter = new NavMeshQueryFilter { agentTypeID = _agent.agentTypeID, areaMask = NavMesh.AllAreas };
             _agent.enabled = false; _model.gameObject.SetActive(false); _hitCollider.enabled = false;
             // 이미 처치한 적은 다시 만들지 않고, 저장된 사망 위치에 원본 전리품만 되살린다. 처치 기록 키는 CampaignEventLog가 정한다.
             if (world.EventComplete(CampaignEventLog.DeathRequirement(_sourceId)))
-            { _dead = true; world.RestoreCorpse(this,_loot,world.TryDeathPosition(_sourceId,out Vector3 position)?position:_home); }
+            { _dead = true; world.RestoreCorpse(this,_loot,_lootCounts,world.TryDeathPosition(_sourceId,out Vector3 position)?position:_home); }
             // 산 적만 체력바와 소리 알림의 나온 적 목록에 넣고 거리 활성화에 등록한다. 죽은 채 되살린 적은 시체만 남아 켜고 끌 것이 없다.
             // 하위 씬에 속한 적은 거리 판정을 끈 프리셋이어도 등록해, 원작처럼 그 하위 씬이 꺼진 동안 함께 꺼진다.
             else
@@ -487,6 +498,47 @@ namespace Game.App
         // 아래는 프리셋 범위(x 최소, y 최대)에서 이 적의 시드 난수로 값을 뽑는다.
         float RandomRange(Vector2 value)=>Mathf.Lerp(value.x,value.y,(float)_random!.NextDouble());
 
+        // 원작 CharacterRandomPreset.AddBullet이다. 주무기가 구경 있는 총이면 분포에서 품질 하나를 뽑아, 그 구경과 태그의 총알을 원작 Search처럼
+        // 찾고(없으면 품질을 낮춰 다시 찾는다) 하나를 고른다. 수량은 기본 수량에 bulletCountRange 안의 배율을 곱해 반올림하고, 원작 StackCount처럼
+        // 최대 스택으로 자르며 1 미만이면 넣지 않는다. 원작 AI는 장전 때 총알을 새로 만들어 소지 총알을 쓰지 않으므로 시체에는 이 수량이 남는다.
+        // 총알은 전리품 끝에 붙여 앞 칸의 번호와 저장된 루팅 키를 바꾸지 않는다. 다른 칸은 정의의 기본 수량이다.
+        // 적 전용(DestroyOnLootBox) 총알은 원작처럼 시체 칸을 만들 때 DeadBodySpawner.CorpseContents가 뺀다.
+        void AddBullet(OriginalGameplayCatalog catalog)
+        {
+            var counts = new int[_loot.Length];
+            for (int index = 0; index < _loot.Length; index++)
+                counts[index] = catalog.TryGet(_loot[index], out OriginalItemDefinition? item) ? item!.DefaultCount : 0;
+            _lootCounts = counts;
+            if (!_weapon!.IsGun || _weapon.Caliber.Length == 0 || _bulletQualities.Length == 0) return;
+            int quality = _bulletQualities[PickWeighted(_bulletQualityWeights)];
+            var exclude = new System.Collections.Generic.HashSet<string>(_bulletExcludeTags, StringComparer.Ordinal);
+            System.Collections.Generic.IReadOnlyList<int> found = catalog.Search(_bulletRequireTag, exclude, quality, _weapon.Caliber);
+            if (found.Count == 0) return;
+            int type = found[_random!.Next(found.Count)];
+            // 찾은 ID는 카탈로그 정의에서 나왔다.
+            OriginalItemDefinition bullet = catalog.DefinitionOf(type);
+            int count = bullet.MaxStack > 1 ? Mathf.Min(bullet.MaxStack, Mathf.RoundToInt(bullet.DefaultCount * RandomRange(_bulletCountRange))) : 1;
+            if (count < 1) return;
+            Array.Resize(ref _loot, _loot.Length + 1);
+            _loot[_loot.Length - 1] = type;
+            Array.Resize(ref _lootCounts, _lootCounts.Length + 1);
+            _lootCounts[_lootCounts.Length - 1] = count;
+        }
+
+        // 원작 RandomContainer.GetRandom(lowPercent 0)이다. 가중치 합 안의 값을 뽑아 누적 가중치가 처음 넘는 항목의 번호를 고른다.
+        int PickWeighted(float[] weights)
+        {
+            float total = 0f;
+            foreach (float weight in weights) total += weight;
+            float target = (float)_random!.NextDouble() * total, sum = 0f;
+            for (int index = 0; index < weights.Length; index++)
+            {
+                sum += weights[index];
+                if (sum >= target) return index;
+            }
+            return weights.Length - 1;
+        }
+
         // 순찰과 근접 전투 이동의 임의 지점이다. 중심 둘레 원 안에서 면적에 고르게 뽑고, 이 에이전트 타입의 NavMesh 위로 옮긴 점만 쓴다.
         // 회피 반경과 반경 균등 분포가 있는 원작 MoveToRandomPos와 다르며, 총기 전투 이동만 원작 규칙의 CombatPoint를 쓴다. 난수는 각도 다음 반경 순이다.
         bool TrySampleAround(Vector3 center, float range, out Vector3 point)
@@ -564,7 +616,7 @@ namespace Game.App
             // 처치 수, 처치 사건, 경험치는 월드가 처치 명령 하나로 확정한다. 피해 출처가 경험치와 처치 수를 받을지 정한다.
             // 처치 과제 알림도 월드가 처치 명령 뒤에 낸다.
             // AI가 죽인 적은 원작처럼 플레이어 처치가 아니다. 공격자가 있으면 경험치, 처치 수, 퀘스트가 세지 않도록 거짓을 넘긴다.
-            _world.Died(this, _loot, fromPlayer && attacker == null, weaponItemId, crit);
+            _world.Died(this, _loot, _lootCounts, fromPlayer && attacker == null, weaponItemId, crit);
             return true;
         }
     }
