@@ -1,0 +1,98 @@
+# DuckCharacter 코드 스타일
+#
+# 새 규칙을 도입한 것이 아니라 이미 쓰고 있던 스타일을 명문화한 것이다.
+# 사람마다 IDE 설정이 달라 들여쓰기 · using 정렬 · 중괄호 위치가 흔들리면
+# 리뷰 diff 가 실제 변경보다 커져서 무엇이 바뀌었는지 읽기 어려워진다.
+#
+# Rider / Visual Studio / VS Code 모두 이 파일을 그대로 읽는다.
+
+root = true
+
+[*]
+charset = utf-8
+end_of_line = crlf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 4
+
+[*.{yml,yaml,json,asmdef}]
+indent_size = 4
+
+[*.{asset,prefab,unity,mat,controller,anim,meta}]
+# 유니티가 직접 쓰는 YAML 이다. 손대지 않는다.
+trim_trailing_whitespace = false
+insert_final_newline = false
+
+[*.md]
+trim_trailing_whitespace = false
+
+[*.cs]
+indent_size = 4
+
+# --- using 정렬 ---
+dotnet_sort_system_directives_first = true
+dotnet_separate_import_directive_groups = false
+csharp_using_directive_placement = outside_namespace:warning
+
+# --- 중괄호 (Allman) ---
+csharp_new_line_before_open_brace = all
+csharp_new_line_before_else = true
+csharp_new_line_before_catch = true
+csharp_new_line_before_finally = true
+csharp_new_line_before_members_in_object_initializers = true
+csharp_prefer_braces = when_multiline:silent
+
+# --- 들여쓰기 ---
+csharp_indent_case_contents = true
+csharp_indent_switch_labels = true
+csharp_indent_labels = one_less_than_current
+
+# --- 공백 ---
+csharp_space_after_cast = false
+csharp_space_after_keywords_in_control_flow_statements = true
+csharp_space_between_method_declaration_parameter_list_parentheses = false
+csharp_space_between_method_call_parameter_list_parentheses = false
+
+# --- 명명 규칙 ---
+# 모든 필드는 접근 제한자와 static / readonly / const 여부에 관계없이 _camelCase 를 쓴다.
+
+dotnet_naming_rule.all_fields.severity = warning
+dotnet_naming_rule.all_fields.symbols = all_field_symbols
+dotnet_naming_rule.all_fields.style = underscore_camel_case_style
+
+dotnet_naming_symbols.all_field_symbols.applicable_kinds = field
+dotnet_naming_symbols.all_field_symbols.applicable_accessibilities = *
+
+dotnet_naming_style.underscore_camel_case_style.required_prefix = _
+dotnet_naming_style.underscore_camel_case_style.capitalization = camel_case
+
+dotnet_naming_rule.public_members.severity = suggestion
+dotnet_naming_rule.public_members.symbols = public_member_symbols
+dotnet_naming_rule.public_members.style = pascal_case_style
+
+dotnet_naming_symbols.public_member_symbols.applicable_kinds = property,method,event
+dotnet_naming_symbols.public_member_symbols.applicable_accessibilities = public
+
+dotnet_naming_style.pascal_case_style.capitalization = pascal_case
+
+# --- 유니티에서 오해를 부르는 제안 끄기 ---
+#
+# 유니티 오브젝트(MonoBehaviour · GameObject · Transform ...)는 == 를 오버로드해서
+# "파괴됨" 상태를 null 처럼 보이게 한다. ?. 와 ?? 는 그 오버로드를 타지 않으므로
+# 파괴된 오브젝트를 살아 있는 것으로 오판한다.
+#
+#   transform?.position          → 파괴된 뒤에도 실행돼 MissingReferenceException
+#   destroyedRenderer ?? fallback → fallback 이 아니라 파괴된 렌더러를 돌려준다
+#
+# 다만 이 규칙을 켜면 분석기가 대상이 유니티 오브젝트인지 구분하지 못해
+# List / 배열 / 순수 C# 클래스에 쓴 ?? 까지 전부 지적한다
+# (2026-09-05 기준 1곳 — DuckCategoryColors 의 List 초기화이고 안전하다).
+# 그래서 실제로 위험한 ?. 만 경고로 두고, ?? 는 사람이 판단한다. 지금 코드에 ?. 는 한 곳도 없다.
+csharp_style_conditional_delegate_call = false:suggestion
+dotnet_style_null_propagation = false:warning
+
+# var 은 우변에서 타입이 명백할 때만.
+csharp_style_var_for_built_in_types = false:suggestion
+csharp_style_var_when_type_is_apparent = true:silent
+csharp_style_var_elsewhere = false:suggestion

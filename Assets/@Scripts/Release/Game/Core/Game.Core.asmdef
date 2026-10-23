@@ -1,0 +1,14 @@
+{
+    "name": "Game.Core",
+    "rootNamespace": "Game.Core",
+    "references": ["UniTask", "UniTask.Addressables", "Unity.Addressables", "Unity.ResourceManager", "Unity.Localization"],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
